@@ -6,21 +6,16 @@
 # Powered by Mojo - http://mojolicious.org/ - http://github.com/kraih/mojo
 # and web-socket-js - http://github.com/gimite/web-socket-js
 
-use FindBin;
-die "You need to run 'git submodule update --init' to fetch the example requirements\n"
-    unless -d "$FindBin::Bin/../mojo/lib";
-
-use lib "$FindBin::Bin/../mojo/lib";
-
+use AnyEvent;
+use AnyEvent::IRC::Client;
 use Mojo::IOLoop;
+use Mojo::Util;
 use Mojolicious::Lite;
+use Data::Dumper;
 
 use strict;
 use warnings;
 use bytes;
-
-# The loop
-my $loop = Mojo::IOLoop->singleton;
 
 # Connection list
 my $c = {};
@@ -33,63 +28,52 @@ my $irc_port = 6667;
 websocket '/' => sub {
     my $client = shift;
 
+    my $timer; 
+    my $c = AnyEvent->condvar;
+    my $irc = new AnyEvent::IRC::Client;
+	
+    app->secrets(['My very secret passphrase.']);
     app->log->debug( "client connected, connecting to $irc_server" );
 
-#    $client->send_message( "Connecting to $irc_server" );
-
-    my $con = $c->{"$client"} = {
-        buffer => ''
-    };
+    $client->{timeout} = 600;
 
     $client->on(finish => sub {
-        app->log->debug( "client finished, dropping conneciton to irc server" );
-        $loop->drop( $con->{irc} )
-            if $con->{irc};
-
-        delete $c->{"$client"};
+        app->log->debug( "client finished, dropping connection to irc server" );
+        $irc->disconnect;
         return;
     });
 
     $client->on(message => sub {
-        $con->{buffer} ||= '';
-        $con->{buffer} .= $_[1]; # chunk
-
-        $loop->write( $con->{irc} => delete $con->{buffer} )
-            if $con->{irc} && length $con->{buffer};
+        #app->log->debug("OnMessage: " . $_[1]);
+        $irc->send_raw($_[1]);
     });
 
-    my $sockClient = Mojo::IOLoop::Client->new;
-    
-    $sockClient->on(connect => sub {
-        app->log->debug( "Connected to $irc_server" );
-        $client->send( "Connected to $irc_server" );
+	$irc->reg_cb(registered => sub {
+		my ($sender) = @_;
+		
+	});
+	
+	$irc->reg_cb(debug_recv => sub {
+		my ($sender, $ircmsg) = @_;
+		my $rawCommand;
+		
+		$rawCommand = sprintf('%s%s %s', 
+									$ircmsg->{'prefix'} ? ":".$ircmsg->{'prefix'}." " : "", 
+									$ircmsg->{'command'},  
+									$ircmsg->{'params'} ? join(' ', @{ $ircmsg->{'params'} }) : "");
 
-        $con->{irc} = delete $con->{_irc};
-        $loop->write( $con->{irc} => delete $con->{buffer} )
-            if length $con->{buffer};
-    });
-        
-    $sockClient->on(read => sub {
-            $client->send( $_[2] ); # chunk
-    });
-        
-    $sockClient->on(error => sub {
-            app->log->debug( "Disconnected from $irc_server (connection error)" );
-            $loop->drop( $client->tx->connection );
-    });
-        
-    $sockClient->on(close => sub {
-            app->log->debug( "Disconnected from $irc_server (hangup)" );
-            $loop->drop( $client->tx->connection );
-    });
-    
-    $con->{_irc} = $sockClient->connect(
-        address => $irc_server,
-        port    => $irc_port
-    );
+		app->log->debug("OnRecv: $rawCommand");
+		$client->send($rawCommand."\n");
+	});
+	
+	$irc->reg_cb(debug_send => sub {
+		my ($sender, $command, @params) = @_;
+		my $rawCommand = "$command " . (@params ? join(' ', @params) : "");
+		app->log->debug("OnSend: $rawCommand");
+	});
 
-    #$loop->connection_timeout( $con->{_irc} => 600 );
-
+    $irc->connect("irc.hackthissite.org", 6667);
+	
     return;
 };
 

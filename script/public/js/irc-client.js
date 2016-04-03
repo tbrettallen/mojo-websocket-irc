@@ -46,8 +46,9 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             }
         }];
 
+		this.ircDefaultChannel = "#mojo";
         this.ircNickname = Ext.state.Manager.get( 'irc-client-nickname', 'MojoGuest' + parseInt( Math.random()*1000 ) );
-
+		
         Ext.ux.IRCClient.superclass.initComponent.call(this);
     },
 
@@ -55,8 +56,6 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
         Ext.ux.IRCClient.superclass.onRender.apply( this, arguments );
 
         this.channelIds = [];
-
-        this.addLine( '<span style="color:blue;">Your IRC nickname is set to "'+Ext.util.Format.htmlEncode(this.ircNickname)+'", use /nick &lt;nickname&gt; to change it</span>' );
 
         this.wsfilter = new Ext.ux.Sprocket.Filter.Stackable({ filters: [ 'Line', 'IRC' ] });
 
@@ -84,11 +83,10 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
     },
 
     connect: function( ev ) {
-        this.addLine( '<span style="color:blue;">Connecting...</span>', Ext.getCmp('irc-tab-panel').getActiveTab().getId() );
-        this.ircTestChannel = '#test';
-
         if ( this.socket )
             this.un( 'close', this.socket.close );
+		else
+			this.keepAlive(this);
 
         this.socket = new WebSocket( this.wsUrl );
         this.socket.onmessage = this.received.createDelegate( this );
@@ -97,6 +95,15 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
 
         this.on( 'close', this.socket.close );
     },
+	
+	keepAlive: function ( _this ) {
+		setTimeout(function () {
+			if ( _this.socket !== undefined && _this.socket.readyState == WebSocket.OPEN ) {
+					_this.socket.send( '' );
+			}
+			_this.keepAlive(_this);
+		}, 5000);
+	},
 
     _received: function( ev ) {
         var data = this.wsfilter.get( ev.data );
@@ -114,17 +121,17 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
     received: function( ev ) {
         var data = this.wsfilter.get( ev.data );
         for ( var i = 0, len = data.length; i < len; i++ ) {
-            try {
+            //try {
                 this.process( data[ i ] );
-            } catch(e) {
-                console.warn( e.message );
-                this.addLine( '<span style="color:red;"><b>Error while processing data:</b> ' + Ext.util.Format.htmlEncode( e.message ) + '</span>' );
-            };
+            //} catch(e) {
+            //    console.warn( e.message );
+           //     this.addLine( '<span style="color:red;"><b>Error while processing data:</b> ' + Ext.util.Format.htmlEncode( e.message ) + '</span>' );
+            //};
         }
     },
 
     process: function( o ) {
-//        console.log(o);
+        //console.log(o);
         switch ( o.name ) {
             case 'notice':
                 this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( o.args.join( ' ' ) ) + '</span>' );
@@ -146,19 +153,19 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 if ( msg.match( /^\u0001ACTION / ) ) {
                     msg = msg.replace( /^\u0001ACTION /, '' );
                     msg = msg.replace( /\u0001$/, '' );
-                    var nick = o.args[ 0 ].match( /^([^!]+)!/ );
-                    this.addLine( '<span style="color:green;">* ' + Ext.util.Format.htmlEncode( nick[ 1 ] + ' ' + msg ) + ' </span>', chan );
+                    var nick = o.args[ 0 ].split('!')[0];
+                    this.addLine( '<span style="color:green;">* ' + Ext.util.Format.htmlEncode( nick + ' ' + msg ) + ' </span>', chan );
                 } else {
 //                    this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( Ext.encode( o ) ) + '</pre>', this.id + '-status' );
                     this.addLine( '<span><strong>&lt;' + o.args[ 0 ].substr( 0, o.args[ 0 ].indexOf( '!' ) ) + '&gt;</strong> ' + msg + '</span>', chan );
                 }
                 break;
             case 'join':
-                var nick = o.args[0].match( /^([^!]+)!/ );
-                if ( nick[ 1 ] == this.ircNickname ) {
+                var nick = o.args[0].split('!')[0];
+                if ( nick == this.ircNickname ) {
                     this.addTab( o.args[1], true );
                 } else {
-                    this.userJoinedChannel( nick[ 1 ], o.args[ 1 ] );
+                    this.userJoinedChannel( nick, o.args[ 1 ] );
                 }
                 break;
             case '443':
@@ -171,22 +178,23 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 this.addLine( '<span style="color:red;">Error:'+ Ext.util.Format.htmlEncode( o.args[1] ) +'</span>', tab );
                 break;
             case 'part':
-                var nick = o.args[0].match( /^([^!]+)!/ );
-                this.userPartedChannel( nick[ 1 ], o.args[ 1 ] );
+                var nick = o.args[0].split('!')[0];
+                this.userPartedChannel( nick, o.args[ 1 ] );
                 break;
             case 'quit':
-                var nick = o.args[0].match( /^([^!]+)!/ );
-                this.userQuit( nick[ 1 ], o.args[1] );
+                var nick = o.args[0].split('!')[0];
+                this.userQuit( nick, o.args[1] );
                 break;
             case 'mode':
                 // {"name":"mode","args":["xantus-web3!~sprocket@cpe-76-94-111-78.socal.res.rr.com","xantus-web3",["+i"]]}
                 // {"name":"mode","args":["BinGOs!bitbucket@gumbybrain.com","#poe",["+v","khisanth_"]]}
                 // {"name":"mode","args":["GumbyNET2!~gumby@jkon.net","#poe",["+o","xantus[]"]]}
-                var nick = o.args[0].match( /^([^!]+)!/ );
-                if ( nick[1] == this.ircNickname ) {
+                var nick = o.args[0].split('!')[0];
+                if ( nick == this.ircNickname ) {
                     this.addLine( '<span style="color:blue;">Mode change <span style="color:black;">' + Ext.util.Format.htmlEncode( o.args[2].join(' ') ) + '</span> for user ' + Ext.util.Format.htmlEncode( o.args[1] ) + '</span>', this.id + '-status' );
                 } else {
-                    this.addLine( '<span style="color:blue;">Mode <span style="color:black;">' + Ext.util.Format.htmlEncode( o.args[2].join(' ') ) + '</span> by ' + Ext.util.Format.htmlEncode( nick[1] ) + '</span>', o.args[1] );
+                    this.addLine( '<span style="color:blue;">Mode <span style="color:black;">' + Ext.util.Format.htmlEncode( o.args[2].join(' ') ) + '</span> by ' + Ext.util.Format.htmlEncode( nick ) + '</span>', o.args[1] );
+					if ()
                 }
                 break;
             case '332':
@@ -195,7 +203,7 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 this.addLine( '<span style="color:blue;">Channel title:</span><span wrap="auto">' + chan[1] + '</span>', chan[0] );
                 break;
             case 'kick':
-                var nick = o.args[0].match( /^([^!]+)!/ );
+                var nick = o.args[0].split('!')[0];
                 if ( o.args[2] == this.ircNickname ) {
                     // {"name":"kick","args":["xantus[]!~xantus@207.7.148.204","#poe","xantus-web","test"]}
                     this.addLine( '<span style="color:red;">You were kicked from ' + Ext.util.Format.htmlEncode( o.args[1] ) + ' by '+ Ext.util.Format.htmlEncode( nick[1] ) +' Reason: '+ Ext.util.Format.htmlEncode( o.args[3] ) + '</span>', o.args[1] );
@@ -206,15 +214,16 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 }
                 break;
             case 'nick':
-                var nick = o.args[0].match( /^([^!]+)!/ );
-                this.userChangedNicks( nick[ 1 ], o.args[ 1 ] );
+                var nick = o.args[0].split('!')[0];
+                this.userChangedNicks( nick, o.args[ 1 ] );
                 break;
             case '353':
 //                this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( Ext.encode( o ) ) + '</pre>', this.id + '-status' );
-                o.args[1] = o.args[1].substr( 2 ); // chop out '@ '
-                var idx = o.args[1].indexOf( ' :' );
-                var members = o.args[1].substr( idx + 2 ).split( ' ' );
-                var tabid = this.addTab( o.args[1].substr( 0, idx ) );
+                var members = o.args[1].trim().split(' ');
+				var chanType = members.shift();
+				var channel = members.shift();
+				
+                var tabid = this.addTab( channel );
                 var groups = {
                     voice: [],
                     op: [],
@@ -222,7 +231,8 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 };
                 for ( var i = 0, len = members.length; i < len; i++ ) {
                     var type = members[ i ].substr( 0, 1 );
-                    var name = members[ i ].substr( 1 );
+                    var name = members[ i ].split('!')[0];
+					
                     switch ( type ) {
                         case '@': // op
                             groups.op.push( { name: name } );
@@ -233,15 +243,16 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                         case '%': // half-op
                             groups.op.push( { name: name, type: 'halfop' } );
                             break;
+						case '~': // owner
+							groups.op.push( { name: name, type: 'owner' });
                         default:
-                            groups.norm.push( { name: members[ i ] } );
+                            groups.norm.push( { name: name } );
                             break;
                     }
                 }
                 var types = [ 'op', 'voice', 'norm' ];
                 var tree = Ext.getCmp('user-tree-' + tabid );
                 for ( var j = 0; j < types.length; j++ ) {
-                    // add the group, and then the children
                     for ( var i = 0, len = groups[ types[ j ] ].length; i < len; i++ ) {
                         tree.root.appendChild({
                             text: groups[ types[ j ] ][ i ].name,
@@ -255,13 +266,12 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 break;
             case '376':
                 this.addLine( '<span style="color:green;">Trying to join '+Ext.util.Format.htmlEncode( this.ircTestChannel )+'</span>', this.id + '-status' );
-                this.socket.send( 'JOIN '+this.ircTestChannel+'\n' );
+                this.socket.send( 'JOIN '+this.ircDefaultChannel+'\n' );
                 break;
-
-            default:
-                this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( o.name + ' - ' + o.args.join(' | ') ) + '</pre>', this.id + '-status' );
-//                this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( Ext.encode( o ) ) + '</pre>', this.id + '-status' );
-//                console.log( Ext.encode( o ) );
+			default:
+				o.args.shift();
+                this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( o.args.join(' ') ) + '</pre>', this.id + '-status' );
+				break;
         }
     },
 
@@ -335,11 +345,31 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             // would be odd, shouldn't happen
             if ( !tree )
                 continue;
+			
+			var namePrefix = '';
             var child = tree.root.findChild( 'text', nick1 );
-            if ( !child )
-                continue;
+            if ( !child ) {
+				namePrefix = '~';
+                child = tree.root.findChild('text', namePrefix + nick1);
+			}
+            if ( !child ) {
+				namePrefix = '@';
+                child = tree.root.findChild('text', namePrefix + nick1);
+			}
+            if ( !child ) {
+				namePrefix = '%';
+                child = tree.root.findChild('text', namePrefix + nick1);
+			}
+            if ( !child ) {
+				namePrefix = '+';
+                child = tree.root.findChild('text', namePrefix + nick1);
+			}
+			
+			if (!child)
+				continue;
+			
             this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick1 ) + ' is now known as <strong>' + Ext.util.Format.htmlEncode( nick2 ) + '</strong></span>', this.channelIds[ i ] );
-            child.setText( nick2 );
+            child.setText( namePrefix + nick2 );
         }
     },
 
@@ -364,13 +394,15 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
         if ( this.socket.readyState == WebSocket.OPEN )
             this.socket.send( 'NICK :' + nick + '\n' );
     },
-
+	
+	initializeNickname: function (btn, nick) {
+		this.promptNickname(btn, nick);
+		this.socket.send('USER mojo * 0 mojo' + "\n");
+	},
 
     connected: function( ev ) {
 //        console.log('connected');
-        this.addLine( '<span style="color:green;">Connected!</span>' );
-        this.socket.send('NICK ' + this.ircNickname + '\nUSER mojo mojo-websocket 127.0.0.1 :mojolicious user\n');
-        this.addTab( this.ircTestChannel, true );
+		Ext.Msg.prompt( 'Nickname', 'Please enter a nick name:', this.initializeNickname, this );
     },
 
     disconnected: function( ev ) {

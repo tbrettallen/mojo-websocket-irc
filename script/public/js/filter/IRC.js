@@ -59,16 +59,16 @@ Ext.extend( Ext.ux.Sprocket.Filter.IRC, Ext.ux.Sprocket.Filter, {
     },
 
     rmColon: function( txt ) {
-        return txt.replace( /^:/, '' );
+		return txt.replace( /^:/, '' );
     },
 
     getOne: function() {
-        var obj = [];
+		var obj = [];
         var item = this.buffer.shift();
         if ( !item )
-            return obj;
+              return obj;
         var m;
-//        log('trying to match:'+item);
+
         if ( ( m = item.match( /^(PING|PONG) (.+)$/ ) ) )
             obj.push( { name: m[ 1 ].toLowerCase(), args: [ m[ 2 ] ] } );
         else if ( ( m = item.match( /^:(\S+) +(PRIVMSG|NOTICE) +(\S+) +(.+)$/ ) ) ) {
@@ -102,9 +102,14 @@ Ext.extend( Ext.ux.Sprocket.Filter.IRC, Ext.ux.Sprocket.Filter, {
             obj.push( { name: 'snotice', args: [ this.rmColon( m[ 1 ] ) ] } );
         else if ( ( m = item.match( /^ERROR +(.+)$/ ) ) )
             obj.push( { name: 'error', args: [ this.rmColon( m[ 1 ] ) ] } );
-        else
+        else {
+			var n = item.indexOf(" ");
+			var commandName = item.substr(0, n);
+			var parameters = item.substr(n+1);
+			obj.push({ name: commandName, args: [ parameters ]});
             log( 'Filter.IRC: Unmatched item '+item );
-
+		}
+		
         return obj;
     },
 
