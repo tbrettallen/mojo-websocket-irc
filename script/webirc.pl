@@ -144,7 +144,7 @@ __DATA__
 				height: window.innerHeight,
 				x: 0,
 				y: 0,
-				layout: 'fit', // This doesn't appear to do anything.
+				//layout: 'fit', // This doesn't appear to do anything.
 				wsUrl: '<%= $url  %>'
 			});
             win.show();
