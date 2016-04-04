@@ -142,6 +142,10 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 break;
             case 'msg':
                 // {"name":"msg","args":["xantus[]!~xantus@207.7.148.204",[["xantus-web"]],"hi"]}
+				if (o.args[0].split('!')[0] == "IRC") {
+					//this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( o.args[2] ) + '</pre>', this.id + '-status' );
+					break;
+				}
                 var msg = Ext.util.Format.htmlEncode( o.args[ 2 ] );
                 msg = msg.replace( /(https?:\/\/\S*)/gi, '<a href="$1" target="_blank">$1</a>' );
                 this.addLine( '<span wrap="auto">' + msg + '</span>', o.args[0].substr( 0, o.args[0].indexOf( '!' ) ) );
@@ -165,7 +169,7 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 if ( nick == this.ircNickname ) {
                     this.addTab( o.args[1], true );
                 } else {
-                    this.userJoinedChannel( nick, o.args[ 1 ] );
+                    this.userJoinedChannel( nick, o.args[ 1 ]);
                 }
                 break;
             case '443':
@@ -194,7 +198,44 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                     this.addLine( '<span style="color:blue;">Mode change <span style="color:black;">' + Ext.util.Format.htmlEncode( o.args[2].join(' ') ) + '</span> for user ' + Ext.util.Format.htmlEncode( o.args[1] ) + '</span>', this.id + '-status' );
                 } else {
                     this.addLine( '<span style="color:blue;">Mode <span style="color:black;">' + Ext.util.Format.htmlEncode( o.args[2].join(' ') ) + '</span> by ' + Ext.util.Format.htmlEncode( nick ) + '</span>', o.args[1] );
-					if ()
+					var modifier = o.args[2][0].substr(0,1);
+					var mode = o.args[2][0].substr(1);
+					
+					for (var i = 0, len = mode.length; i < len; i++) {
+						switch (mode[i])
+						{
+							case 'q':
+								if (modifier == '+')
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 0, "owner");
+								else
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 5, "normal");
+								break;
+							case 'a':
+								if (modifier == '+')
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 1, "prot");
+								else
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 5, "normal");
+								break;
+							case 'o':
+								if (modifier == '+')
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 2, "op");
+								else
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 5, "normal");
+								break;
+							case 'h':
+								if (modifier == '+')
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 3, "halfop");
+								else
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 5, "normal");
+								break;
+							case 'v':
+								if (modifier == '+')
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 4, "voice");
+								else
+									this.userChannelModeChanged(o.args[2][1], o.args[1], 5, "normal");
+								break;
+						}
+					}
                 }
                 break;
             case '332':
@@ -206,11 +247,11 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                 var nick = o.args[0].split('!')[0];
                 if ( o.args[2] == this.ircNickname ) {
                     // {"name":"kick","args":["xantus[]!~xantus@207.7.148.204","#poe","xantus-web","test"]}
-                    this.addLine( '<span style="color:red;">You were kicked from ' + Ext.util.Format.htmlEncode( o.args[1] ) + ' by '+ Ext.util.Format.htmlEncode( nick[1] ) +' Reason: '+ Ext.util.Format.htmlEncode( o.args[3] ) + '</span>', o.args[1] );
+                    this.addLine( '<span style="color:red;">You were kicked from ' + Ext.util.Format.htmlEncode( o.args[1] ) + ' by '+ Ext.util.Format.htmlEncode( nick ) +' Reason: '+ Ext.util.Format.htmlEncode( o.args[3] ) + '</span>', o.args[1] );
 //                    this.removeTab( o.args[1] );
                 } else {
                     // kicked
-                    this.userPartedChannel( o.args[2], o.args[1], nick[1] );
+                    this.userPartedChannel( o.args[2], o.args[1], nick );
                 }
                 break;
             case 'nick':
@@ -225,41 +266,57 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
 				
                 var tabid = this.addTab( channel );
                 var groups = {
-                    voice: [],
+                    owner: [],
+                    prot: [],
                     op: [],
-                    norm: []
+                    halfop: [],
+                    voice: [],
+                    normal: []
                 };
                 for ( var i = 0, len = members.length; i < len; i++ ) {
                     var type = members[ i ].substr( 0, 1 );
                     var name = members[ i ].split('!')[0];
 					
                     switch ( type ) {
+						case '~': // owner
+							groups.owner.push( { name: name.substr(1) });
+							break;
+						case '&': // protected
+							groups.prot.push( { name: name.substr(1) });
+							break;
                         case '@': // op
-                            groups.op.push( { name: name } );
+                            groups.op.push( { name: name.substr(1) } );
+                            break;
+                        case '%': // half-op
+                            groups.halfop.push( { name: name.substr(1) } );
                             break;
                         case '+': // voice
                             groups.voice.push( { name: name } );
                             break;
-                        case '%': // half-op
-                            groups.op.push( { name: name, type: 'halfop' } );
-                            break;
-						case '~': // owner
-							groups.op.push( { name: name, type: 'owner' });
                         default:
-                            groups.norm.push( { name: name } );
+                            groups.normal.push( { name: name } );
                             break;
                     }
                 }
-                var types = [ 'op', 'voice', 'norm' ];
+                var types = [ 'owner', 'prot', 'op', 'halfop', 'voice', 'normal' ];
+                var typeDesc = [ '~Owner', '&Protected', '@Ops', '%Half-Ops', '+Voice', 'Normal' ];
                 var tree = Ext.getCmp('user-tree-' + tabid );
                 for ( var j = 0; j < types.length; j++ ) {
-                    for ( var i = 0, len = groups[ types[ j ] ].length; i < len; i++ ) {
-                        tree.root.appendChild({
+					var groupNode = new Ext.tree.TreeNode();
+					groupNode.text = typeDesc[ j ];
+					groupNode.iconCls = '';
+					groupNode.leaf = false;
+					groupNode.expanded = true;
+					
+                    for ( var i = 0, len = groups[ types[j] ].length; i < len; i++ ) {
+                        groupNode.appendChild({
                             text: groups[ types[ j ] ][ i ].name,
-                            iconCls: 'irc-user-' + ( groups[ types[ j ] ][ i ].type || types[ j ] ),
+                            iconCls: 'irc-user-' + types[j],
                             leaf: true
                         });
                     }
+					
+					tree.root.appendChild(groupNode);
                 }
                 tree.root.expand(true, true);
 //                    this.addLine( '<span style="color:blue;">Channel members:</span><span wrap="auto">' + members.join(', ') + '</span>', o.args[1].substr( 0, idx ) );
@@ -272,6 +329,43 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
 				o.args.shift();
                 this.addLine( '<pre wrap="auto">' + Ext.util.Format.htmlEncode( o.args.join(' ') ) + '</pre>', this.id + '-status' );
 				break;
+        }
+    },
+
+    userChannelModeChanged: function( nick, chan, childNodeIndex, modeType ) {
+        if ( !chan )
+            return;
+        var cid = chan.replace(/[^A-Z0-9-_]/gi, '');
+        for ( var i = 0, len = this.channelIds.length; i < len; i++ ) {
+            if ( cid ) {
+                if ( cid != this.channelIds[ i ] )
+                    continue;
+            }
+			
+            var tree = Ext.getCmp( 'user-tree-' + this.channelIds[ i ] );
+			
+            // would be odd, shouldn't happen
+            if ( !tree )
+                continue;
+			
+			// For some reason findChild doesn't work here, but lastChild does o_O.
+			var group = tree.root.childNodes[childNodeIndex];
+			
+			if (!group)
+				continue;
+			
+			for ( var x = 0, len2 = tree.root.childNodes.length; x < len2; x++ ) {
+				var child = tree.root.childNodes[x].findChild( 'text', nick );
+			
+				if ( child )
+					child.parentNode.removeChild(child);
+			}
+			
+            group.appendChild({
+                text: nick,
+                iconCls: 'irc-user-' + modeType,
+                leaf: true
+            });
         }
     },
 
@@ -289,18 +383,29 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             // would be odd, shouldn't happen
             if ( !tree )
                 continue;
-            var child = tree.root.findChild( 'text', nick );
-            if ( child )
-                tree.root.removeChild( child );
-            tree.root.appendChild({
+			
+			// For some reason findChild doesn't work here, but lastChild does o_O.
+			var normalGroup = tree.root.lastChild;
+			
+			if (!normalGroup)
+				continue;
+			
+			for ( var x = 0, len2 = tree.root.childNodes.length; x < len2; x++ ) {
+				var child = tree.root.childNodes[x].findChild( 'text', nick );
+			
+				if ( child )
+					child.parentNode.removeChild(child);
+			}
+			
+            normalGroup.appendChild({
                 text: nick,
-                iconCls: 'irc-user-norm',
+                iconCls: 'irc-user-normal',
                 leaf: true
             });
         }
     },
 
-    userPartedChannel: function( nick, chan, kickedby ) {
+    userPartedChannel: function( nick, chan, kickedby, reason ) {
         var cid;
         if ( chan )
             cid = chan.replace(/[^A-Z0-9-_]/gi, '');
@@ -310,7 +415,7 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
                     continue;
             }
             if ( kickedby ) {
-                this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick ) + ' was kicked from ' + Ext.util.Format.htmlEncode( chan || '' ) + ' by ' + Ext.util.Format.htmlEncode( kickedby ) +'</span>', this.channelIds[ i ] );
+                this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick ) + ' was kicked from ' + Ext.util.Format.htmlEncode( chan || '' ) + ' by ' + Ext.util.Format.htmlEncode( kickedby ) + ' Reason: '+ Ext.util.Format.htmlEncode( reason ) +'</span>', this.channelIds[ i ] );
             } else {
                 this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick ) + ' has left ' + Ext.util.Format.htmlEncode( chan || '' ) + '</span>', this.channelIds[ i ] );
             }
@@ -318,10 +423,16 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             // would be odd, shouldn't happen
             if ( !tree )
                 continue;
-            var child = tree.root.findChild( 'text', nick );
-            if ( !child )
-                continue;
-            tree.root.removeChild( child );
+			
+            for ( var x = 0, len2 = tree.root.childNodes.length; x < len2; x++ ) {
+				var child = tree.root.childNodes[x].findChild( 'text', nick1 );
+			
+				if (!child)
+					continue;
+				
+				child.parentNode.removeChild( child );
+				break;
+			}
         }
     },
 
@@ -331,11 +442,17 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             // would be odd, shouldn't happen
             if ( !tree )
                 continue;
-            var child = tree.root.findChild( 'text', nick );
-            if ( !child )
-                continue;
-            this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick ) + ' has quit: ' + Ext.util.Format.htmlEncode( reason ) + '</span>', this.channelIds[ i ] );
-            tree.root.removeChild( child );
+			
+			for ( var x = 0, len2 = tree.root.childNodes.length; x < len2; x++ ) {
+				var child = tree.root.childNodes[x].findChild( 'text', nick );
+			
+				if (!child)
+					continue;
+				
+				this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick ) + ' has quit: ' + Ext.util.Format.htmlEncode( reason ) + '</span>', this.channelIds[ i ] );
+				child.parentNode.removeChild( child );
+				break;
+			}
         }
     },
 
@@ -346,30 +463,16 @@ Ext.ux.IRCClient = Ext.extend( Ext.Window, {
             if ( !tree )
                 continue;
 			
-			var namePrefix = '';
-            var child = tree.root.findChild( 'text', nick1 );
-            if ( !child ) {
-				namePrefix = '~';
-                child = tree.root.findChild('text', namePrefix + nick1);
-			}
-            if ( !child ) {
-				namePrefix = '@';
-                child = tree.root.findChild('text', namePrefix + nick1);
-			}
-            if ( !child ) {
-				namePrefix = '%';
-                child = tree.root.findChild('text', namePrefix + nick1);
-			}
-            if ( !child ) {
-				namePrefix = '+';
-                child = tree.root.findChild('text', namePrefix + nick1);
-			}
+			for ( var x = 0, len2 = tree.root.childNodes.length; x < len2; x++ ) {
+				var child = tree.root.childNodes[x].findChild( 'text', nick1 );
 			
-			if (!child)
-				continue;
-			
-            this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick1 ) + ' is now known as <strong>' + Ext.util.Format.htmlEncode( nick2 ) + '</strong></span>', this.channelIds[ i ] );
-            child.setText( namePrefix + nick2 );
+				if (!child)
+					continue;
+				
+				this.addLine( '<span style="color:blue;">' + Ext.util.Format.htmlEncode( nick1 ) + ' is now known as <strong>' + Ext.util.Format.htmlEncode( nick2 ) + '</strong></span>', this.channelIds[ i ] );
+				child.setText( nick2 );
+				break;
+			}
         }
     },
 

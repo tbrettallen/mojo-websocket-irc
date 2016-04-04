@@ -5,8 +5,16 @@
     background-repeat:no-repeat;
 }
 
-.irc-user-norm {
+.irc-user-normal {
     background-image:url(user.png) !important;
+}
+
+.irc-user-prot {
+    background-image:url(user_suit.png) !important;
+}
+
+.irc-user-owner {
+    background-image:url(user_suit.png) !important;
 }
 
 .irc-user-op {

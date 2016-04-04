@@ -125,17 +125,28 @@ __DATA__
     <link rel="stylesheet" type="text/css" href="css/irc.css" />
     <script type="text/javascript" src="js/irc-client.js"></script>
     <script type="text/javascript">
+		// This doesn't fix the problem discused below. Commented out in case it's useful later.
+		//var win;
+		//window.onresize = function(event) {
+		//	if (!win)
+		//		return;
+		//	win.width = window.innerWidth;
+		//	win.height = window.innerHeight;
+		//	win.doLayout();
+		//};
+		
         Ext.onReady(function() {
-            var win = Ext.create({
-                title: 'Mojo WebSocket Demo - ExtJS IRC Client',
-                xtype: 'irc-client',
-                renderTo: 'irc-panel',
-                width: 800,
-                height: 400,
-                x: 10,
-                y: 10,
-                wsUrl: '<%= $url  %>'
-            });
+			var win = Ext.create({
+				title: 'Mojo WebSocket Demo - ExtJS IRC Client',
+				xtype: 'irc-client',
+				renderTo: 'irc-panel',
+				width: window.innerWidth, // Can't figure out how to auto-resize this.
+				height: window.innerHeight,
+				x: 0,
+				y: 0,
+				layout: 'fit', // This doesn't appear to do anything.
+				wsUrl: '<%= $url  %>'
+			});
             win.show();
         });
     </script>
